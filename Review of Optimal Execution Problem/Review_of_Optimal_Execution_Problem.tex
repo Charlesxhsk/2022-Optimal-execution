@@ -1,0 +1,1014 @@
+  \documentclass[12pt,oneside]{article}
+  \title{Review of Optimal Execution Problem}
+  \date{ 31/03/2022 }
+  \author{Xingjian Xue, Yiwen Liu, Yujie Hong, Yuqing Bu}
+  \usepackage[rsfm,fancyhdr,hyperref,colour]{edmaths_mod}
+  \usepackage{tikz}
+  \usepackage{mathrsfs}
+  \usepackage{bm}
+  \usepackage{amsmath}
+  \usepackage{listings}
+\lstset{
+ columns=fixed,       
+ numbers=left,                                        % 在左侧显示行号
+ numberstyle=\tiny\color{gray},                       % 设定行号格式
+ frame=none,                                          % 不显示背景边框
+ %backgroundcolor=\color[RGB]{245,245,244},            % 设定背景颜色
+ keywordstyle=\color[RGB]{40,40,255},                 % 设定关键字颜色
+ numberstyle=\footnotesize\color{darkgray},           
+ commentstyle=\it\color[RGB]{0,96,96},                % 设置代码注释的格式
+ stringstyle=\rmfamily\slshape\color[RGB]{128,0,0},   % 设置字符串格式
+ breaklines = True
+ showstringspaces=false,                              % 不显示字符串中的空格
+ language=python,                                        % 设置语言
+}
+
+
+  \flushbottom
+
+  \begin{document}
+  \pagenumbering{roman}
+  \maketitle
+
+  \begin{abstract}
+We introduce the optimal execution problem, and classify the methods into price impact based models which focus on modelling temporary and permanent impact from the dynamics of market price and microstructure of the market, and order book based models which concentrate on the dynamics of the limit order book system. Nonlinear impact model use a power law temporary impact function giving more influence on the trading speed. From the simulation, we can tell that it is more suitable for rapid execution. Cartea-Jaimungal strategy incorporates order-flow into model, and adjusted linear model by by adding a weighted-average term of future expected net order-flow. Stochastic volatility is a discrete-time model following a coupled and finite Markov chain.And we use the forward-backward equations and Bellman equations to solve the discrete-time model.For three order book based models, The first one models the state of order book as a Markov Chain Process. The second model provides a fluid-diffusion model for  discrete-time one-sided limit order book.At last, LSTM is suitable for predicting events with relatively long interstitions and delays in time series.
+   \end{abstract}
+
+
+  \tableofcontents
+ % \addcontentsline{toc}{Contents}
+ \newpage
+ \pagenumbering{arabic}
+
+\section{Introduction}
+This paper investigates different methods for the optimal execution problem. We classify the recent studies into two main streams: price impact streams and order book streams. We analyse these models and make comparisons under certain conditions. 
+
+Either for institutional investors or for traders, when they are trying to execute a large amount of order, execution cost is one of the most important factor that should be taken into consideration. Simply putting large orders into the market can often make the execution cost unacceptable. 'Execution cost' can be divided into the following subjects: commissions, bid-ask spreads, opportunity costs of waiting, and price impacts from trading\cite{RN18}. Most papers focus on modelling order book and price impact.
+
+\begin{figure}[htbp]
+    \centering
+    \includegraphics[scale=0.5]{f1.PNG}
+    \caption{Types of methods}
+    \label{fig:my_label}
+\end{figure}
+
+First is price impact. Market price (MO) could have its own dynamics, which can be modelled as a Geometric Brownian Motion in the famous Black-Scholes model\cite{merton:1973}. However, it will also be affected by the liquidating process: for a large buy (sell) order, MO often goes up (down) and has fluctuation as the consequence. The basic reason behind this kind of dynamic change of price is that large orders will exhaust the supply of liquidity at each price level. In other word, the best price traders want their large orders not to be filled by the limit order books placed in the market. Besides, the large sell (buy) action provides more information to the market, then other investors may have response. This kind of influence to the price can be divided into two categories: temporary impact and permanent impact. The goal for optimal execution problem is trying to include all execution cost above in the model, especially price impact, and give the optimal execution strategy under performance criteria. 
+
+
+
+Another perspective is from order book\cite{RN14}. During trading process, market orders are executed against the best price provided by the limit order book system. With the large data from order book, researchers can build models of high-frequency order book dynamics that contain information about market order flow, security liquidity and price dynamics. The goal for such modelling is that we can use the information on the current state of the order book to predict its short-term behaviour, the future order size and price. Therefore, we can decide our optimal execution speed for large orders. 
+
+The optimal execution problem was first addressed in\cite{RN15}. In the paper, Bertsimas and Lo built a discrete-time model for price dynamics, and provided one clear definition of best execution, based on the goal of minimizing the expected cost of execution using stochastic dynamic programming. Then in 2001, Almgren and Chriss\cite{RN11} introduced linear temporary impact function into the model and use the mean-variance for optimization target. After two years, Almgren et.al \cite{RN17} modelled temporary impact function as a power law function, which gave more balance to the execution speed than the linear model. Li et.al\cite{moazeni2013optimal} added Poisson process as the dynamic of stochastic price impact factor into the model. From the perspective of limit order book, Rama Cont\cite{RN14} built a prediction model for LOB by assuming that the dynamic of order book is a Poisson process and can be accelerated by Laplace transform method, which is suitable for high-frequency model. 
+
+In section 2, we present four price impact based models: linear impact model, which is also known as Almgren-Chriss execution model, nonlinear impact model, incorporating order-flow execution model and stochastic volatility model. We discuss the construction and the solutions of these models. In section 3, we present three order book based models: Markov chain model, fluid-diffusion model, LSTM neural network model, and introduce the basic ideas about these models. In section 4, we use linear impact model and nonlinear impact model to simulate the solution for 2014 INTC stock data and give some analysis. We give a square root nonlinear temporary impact function. We also plot the efficient frontier for linear case. Finally, in Appendix, we present the codes for simulation.
+%\begin{tikzpicture}[sibling distance=10em,
+%  every node/.style = {shape=rectangle, rounded corners,
+%    draw, align=center,
+%    top color=white, bottom color=blue!20}]]
+%  \node {optimal execution \\ problem}
+%    child { node {price impact \\ models}
+%      child { node {temporary \\ impact}
+%        child { node {linear with \\ liquidating speed}
+%          child { node {stochastic \\ volatility} }
+%          child { node {uncertainty of \\ trade speed} } 
+%              }
+%        child { node {nonlinear with \\ liquidating speed} }
+%         }
+%      child { node {permanent \\ impact} } }
+%      child { node {order book \\ models}
+%        child { node {discrete-time \\ Markov chain}}
+%        child { node {fluid-diffusion \\ models}}
+%        child { node {deep learning \\ framework}}};
+%\end{tikzpicture}
+
+%The essay should consist of the abstract, introduction, main text, and references. The essay could be written purely based on the literature review without any simulation or any original material. You may also choose to explore the outcome of the suggested paper by running some simulations and possibly proposing your own methods. (Do not worry if your proposed method fails. Please submit it in the report and clearly explain your experiment and intuition.)  You may also present the simulations of some other papers. (Make sure that you give a citation of the simulation if you do not run it yourself.) You may or may not present the proof of the paper in detail. However, some concepts of the proof should be described or put a proper referencing. 
+
+%The presentation is more flexible. I do not have a particular structure for the presentation. You may decide what should be the best to illustrate the research skills that you develop throughout this course. 
+
+%In terms of assessment, there are a few possible directions that you could write an essay and prepare your presentation. Please use your own judgement on the amount of work that you have done. Roughly speaking, the presentation and the essay will be graded according to the following criteria.
+
+%\begin{enumerate}
+%    \item Candidates show a good understanding of the research paper and demonstrate %the results of the research paper correctly. 
+%    \item Candidates explain the material in the research paper well. The %presentation/ essay is very well-organised.
+%    \item Candidates show competent research skills to analyse and replicate the %results of the assigned paper. They can read, research and describe some relevant %material (apart from the assigned paper) to compare with the assigned paper.
+%\end{enumerate}
+
+
+%The first two criteria are essential assessments for this course, whereas the third criterion would be required for an outstanding essay/ presentation. 
+
+%To give concrete examples, I will describe how I would structure an essay corresponding to each proposed topic. I change the essay's title slightly to align with the works that I am presenting. (Please also feel free to do so.) These essays required more material than what was discussed in the assigned paper. You may find these extra materials from the reference of the assigned papers.
+
+
+%\begin{enumerate}
+%\item Keep it short.
+%\item Provide context of your work. Cite literature.
+%\item Be precise. Avoid `big' words, such `novel', `revolutionary', `ultimate': never %suggest that the paper contains more than it does.
+%\item Do provide an overview of what is done in the paper.
+%\item It is the last part to write.
+%\end{enumerate}
+
+%Quite often the introduction is concluded by a `wordy table of contents', which %describes what is done in which section of the paper.
+%For this particular document, it could look like that:
+%`The rest of the paper is structured as follows. In Section~\ref{Division into sections} we discuss how %to split your documents into sections, in Section~\ref{Referencing}, we examine  managing  references. In %Section~\ref{formatting}, we share some tips on formatting. We conclude with Section~\ref{conclusion} in %which we provide some final remarks.'
+
+
+
+
+
+
+\section{Price Impact Based Model}
+The first model introduced is a linear price impact (both temporary and permanent) model, with the target of minimizing mean-variance function.
+
+\subsection{Linear Impact Model}
+
+Almgren-Chriss execution model\cite{RN11} is a classic discrete-time execution model and has become one of the fundamental framework for related studies in High-Frequency Trading and Algorithm Trading areas. The paper set the goal of execution in a 'mean-variance' way, which is maximizing the expected revenue of trading (minimizing the trading cost, like quadratic utility function or VAR) under an acceptable level of penalty from variance (uncertainty) of the revenue. Temporary and permanent impact in price dynamics are formulated as linear function driven by execution speed, and in the original model there is no drift term in permanent impact by assuming no information is given about future price direction.
+Finally, the optimal trading trajectories is obtained using static optimization procedures, that means the optimal trading trajectories is determined before trading. 
+
+
+\subsubsection{Price Dynamics}
+Given $X$ as the initial units of stocks that will be fully executed at time $T$, time interval $\tau=T/N$, define discrete time $t_k=k\tau$,for $k=0,1,...,N$, then our inventory is a decreasing list $x_k,x_0=X$, the number of units stocks that we have at time $t_k$. Our trading strategy is defined as a list $n_k=x_{k-1}-x_k$. The relationship between $x_k$ and $n_k$ is:
+
+\begin{equation}\label{eq:x_k and n_k}
+    x_k=X-\sum_{i=1}^{k}n_i=\sum_{j=k+1}^{N}n_j,\, k=0,...,N.
+\end{equation}
+
+Suppose the initial stock price is $S_0$, the price dynamics can be influenced in two main factors: its own volatility and  drift, and market impact, temporary and permanent, which caused by our execution action. 
+
+As for permanent impact, it is because our large order come into market, the initial balance is broken and is shifting to the new 'equilibrium'. We can formulate this kind of evolution in following discrete-time equation:
+
+\begin{equation}\label{eq:pi}
+    S_k=S_{k-1}+\sigma \sqrt{\tau}\xi_k-\tau g(v)
+\end{equation}
+
+Here, $\sigma$ is the volatility of the stock, $\tau$ is the time interval, $\xi_k$ is a random variable follows normal distribution $\mathcal{N}(0,1)$, $v=\frac{n_k}{\tau}$ is the liquidate speed, $g(v)$ denotes the permanent impact function. We may add the drift term later, but here in this model, there is no drift term, which means that we do no make any assumption about future stock price moving direction. 
+
+In this model, the permanent impact function is a linear function, given by:
+
+\begin{equation}\label{eq:linearforpi}
+    g(v)=\gamma v
+\end{equation}
+
+$\gamma$ is a constant, describes that every unit we sell will depress the current price. So  Eq.~\ref{eq:pi} can be written as:
+\begin{equation}
+    S_k=S_{k-1}+\sigma \sqrt{\tau}\xi_k-\tau \gamma v
+\end{equation}
+
+As for temporary impact, it is caused because the bid price and order size in limit order book can not always fit our large order, so the liquidity will be exhausted, we may assume this influence will only lasting for a short period. Given liquidate speed$v$, the temporary impact can be formulated by:
+
+\begin{equation}
+\tilde{S_k}=S_{k-1}-h(v)    
+\end{equation}
+
+Here, for temporary impact function $h(v)$, we take:
+
+\begin{equation}\label{eq:linearforti}
+    h(v)=h(\frac{n_k}{\tau})=\epsilon sgn(n_k)+\frac{\eta}{\tau}n_k=\epsilon sgn(n_k)+\eta v
+\end{equation}
+
+$\epsilon$ is the estimation of fixed cost of selling, such as commissions. $\eta$ is a coefficient from market microstructure.$sgn(n_k)$ is a signum function: if $n_k>0$, its value is 1, if $n_k<0$, its value is -1, obviously, in a pure sell execution, $sgn(n_k)\equiv1$.
+
+\subsubsection{Mean-variance Performance Criterion}
+Since we have modelled the two kinds of market impact, we can now calculate the cost during whole execution period. We can define the \textit{capture} of a trading trajectory, which means the total revenue after the final trade. We can calculate it by summing all trading units times the execution price, $\sum_{k=1}^{N}n_k\tilde{S_k}$. Our initial asset value is $XS_0$, so the execution cost (which is also known as implementation shortfall\cite{perold1988implementation}) is:
+
+\begin{equation}
+    XS_0-\sum_{k=1}^{N}n_k\tilde{S_k}=-\sum_{k=1}^{N}(\sigma \sqrt{\tau}\xi_k-\tau g(v))x_k+\sum_{k=1}^{N}(n_k h(v))
+\end{equation}
+
+Using $E(x)$ and $V(x)$ to denote the expectation and the variance of execution cost. We can then get:
+\begin{equation}\label{eq:oriexpect}
+    E(x)=\sum_{k=1}^{N}(\tau g(v) x_k)+\sum_{k=1}^{N}(n_k h(v))
+\end{equation}
+
+\begin{equation}\label{eq:orivariance}
+    V(x)=\sigma^2\sum_{k=1}^{N}(\tau x_k^2)
+\end{equation}
+
+We can plug Eq.~\ref{eq:linearforpi} and Eq.~\ref{eq:linearforti} into Eq.~\ref{eq:oriexpect} then yields:
+\begin{equation}\label{eq:plugedexpect}
+    E(x)=\frac{1}{2}\gamma X^2+\epsilon\sum_{k=1}^{N}|n_k|+\frac{\eta-1/2\gamma \tau}{\tau}\sum_{k=1}^{N}n_k^2
+\end{equation}
+
+Our mean-variance criterion is to minimize 
+\begin{equation}\label{eq:target_general}
+    \min\limits_x U(x)=E(x)+\lambda V(x)
+\end{equation}
+for any different values of $\lambda$. $\lambda$ here can be interpreted as a measure of risk-aversion, which shows the penalty on variance of execution cost. And the result is that there will be an unique trading trajectory $n_k$ that for every $\lambda$, $E(x)+\lambda V(x)$ is minimal. $E(x)$ is strict convex, $V(x)$ is convex. We assume in the execution process, there is no buying action, so for a pure selling execution, $n_k\geq 0$. 
+
+\subsubsection{Solutions}
+Applying Eq.~\ref{eq:plugedexpect} and Eq.~\ref{eq:orivariance} to Eq.~\ref{eq:target_general}, we can get the following unconstrained problem:
+\begin{equation}
+    U(x)=\frac{1}{2}\gamma X^2+\epsilon\sum_{k=1}^{N}|n_k|+\frac{\eta-1/2\gamma\tau}{\tau}\sum_{k=1}^{N}n_k^2+\lambda \cdot \sigma^2\sum_{k=1}^{N}(\tau x_k^2)
+\end{equation}
+
+Since $U(x)$ above is a quadratic and strict convex (for $\lambda \geq 0$) function of the inventory control $x_k$. We can therefore get the extreme point for this target function by setting its all partial derivatives to zero, which means:
+\begin{equation}\label{eq:derivativeto0}
+    \frac{\partial U}{\partial x_j}=2\tau(\lambda \sigma^2x_j-(\eta-\frac{1}{2}\gamma \tau)\frac{x_{j-1}-2x_j+x_{j+1}}{\tau^2})=0
+\end{equation}
+for $j=1,2,...,N-1$. We get:
+\begin{equation}\label{eq:lineardiff}
+    \tilde{\kappa}^2x_j=\frac{x_{j-1}-2x_j+x_{j+1}}{\tau^2}
+\end{equation}
+which $\tilde{\kappa}^2=\frac{\lambda \sigma^2}{\eta-\frac{1}{2}\gamma \tau}$.Since Eq.~\ref{eq:lineardiff} is a linear difference equation, we can write its solution in a form $e^{\kappa t_j}$, where $\kappa = \tilde{\kappa}=\sqrt{\frac{\lambda \sigma^2}{\eta}}$ as $\tau \rightarrow 0$.
+
+Then the trading trajectory solution with boundary condition $x_0=X,x_N=0$ is:
+\begin{equation}\label{eq:optimal_trading_traj(x)}
+    x_j=X\cdot \frac{sinh(\kappa(T-t_j))}{sinh(\kappa T)}, \, j=0,...,N
+\end{equation}
+
+and the associated trading list is:
+\begin{equation}\label{eq:optimal_trding_list(n)}
+    n_j=X\cdot \frac{2sinh(\frac{1}{2}\kappa \tau)}{sinh(\kappa T)}cosh(\kappa(T-t_{j-1/2})), \, j=1,2,...,N
+\end{equation}
+
+
+\subsection{Nonlinear Impact Model}
+In the above model, we have made some assumptions that price impact is a linear function of liquidate speed, and the only source of uncertainty is from underlying assets' volatility. However, in practice, linearity in price impact is an unreal assumption\cite{RN19}. Therefore, the following model\cite{RN17} improves the original model by assuming that the price impact is a nonlinear function of trading speed. 
+
+\subsubsection{Nonlinear Price Impact}
+Assume our initial units of stock is $X$, and we wish to fully liquidated our inventory at time $T$, time interval $\tau=\frac{T}{N}$, $t_k=k\tau\, for k=0,1,...,N$. Our holdings at time $t_k$ is $x_k$, and our trading strategy is defined as same as the first model $n_k=x_{k-1}-x_k$, we can also define our liquidate speed $v_k=\frac{n_k}{\tau}$. We can get the same equation as Eq.~\ref{eq:x_k and n_k}, which is:
+\begin{center}
+    $x_k=X-\sum\limits_{i=1}^{k}n_i=\sum\limits_{j=k+1}^{N}n_i,\, k=0,...,N.$
+\end{center}
+This time we still divide the price impact into permanent impact and temporary impact two parts. 
+
+For permanent impact, the price dynamics satisfies the same form as Eq.~\ref{eq:pi}, and here we can rewrite as:
+\begin{equation}\label{eq:Non-perm-sumform}
+    S_k=S_{0}+\sigma \sqrt{\tau}\sum_{k=0}^{N}\xi_k-\tau \sum_{k=0}^{N}g(v_k)
+\end{equation}
+$\sigma$ is the \textit{absolute} volatility of the stock, $\xi_k\sim\mathcal{N}(0,1), \textit{i.i.d}$, $g(v)$ denotes the linear permanent impact function. The formulation is $g(v)=\gamma X$. However, at this time, we consider this permanent impact is relatively small and will have no effect on determining the optimal execution strategy. It is a bit different from the former model, this formulation means we assume permanent impact only depends on inventory. The reason we made such assumption is because we want to get a more explicit solution for final trading model. 
+
+For temporary impact, the price dynamics is determined by following:
+\begin{equation}
+    \tilde{S_k}=S_k-h(v_k)+\frac{1}{\sqrt{\tau}}f(v_k)\tilde{\xi}_k, \, k=1,2,...,N
+\end{equation}
+$h(v_k)$ is a temporary impact function, $\tilde{\xi}_k\sim\mathcal{N}(0,1), \textit{i.i.d}$, $f(v_k)$ is a new function which represents the uncertainty of the trading execution. The term $\frac{1}{\sqrt{\tau}}$ have two meanings: if it is fixed and finite, this term is just a scaling of the parameters; if in an continuous-time model, we make $\tau \rightarrow 0$, then this term can make sure that we can not diversify the risk by breaking the order into several small orders due to the uncertainty of the trade execution.
+
+\begin{figure}
+    \centering
+    \includegraphics[scale=0.5]{f&h.PNG}
+    \caption{$f(v)$ and $h(v)$}
+    \label{fig:f&h}
+\end{figure}
+
+As shown in Fig.~\ref{fig:f&h}(Also see \cite[Fig.1]{RN17}), $h(v)$ represents the temporary price impact which is increasing as trading speed grows. The dashed line $f(v)\pm h(v)$ represents one standard deviation of the mean.
+
+For a pure selling model, with $v\geq 0$, we take:
+\begin{equation}
+    h(v)=\eta v^k
+\end{equation}
+\begin{equation}
+    f(v)=0
+\end{equation}
+
+with $k>0$. 
+\begin{itemize}
+    \item $k<1$, we interpret with fast trading velocity is under-penalized compared to linear trading velocity, which means sell the same amount of stock at every execution.  
+    \item $k>1$, we interpret with fast trading velocity is over-penalized compared to linear trading velocity. See Fig.~\ref{fig:k}.
+\end{itemize}
+\begin{figure}
+    \centering
+    \includegraphics[scale=0.6]{kinnon.png}
+    \caption{k in nonlinear temporary impact}
+    \label{fig:k}
+\end{figure}
+
+The execution cost can be represented by the same as$XS_0-\sum_{k=1}^{N}n_k\tilde{S_k}$, which equals:
+\begin{equation}
+    -\sigma\sqrt{\tau}\sum_{k=1}^{N-1}x_k\xi_k+\tau\sum_{k=1}^{N}x_kg(v_k)+\tau\sum_{k=1}^{N}v_k h(v_k)-\sqrt{\tau}\sum_{k=1}^{N}v_k f(v_k)\xi_k
+\end{equation}
+
+\subsubsection{Continuous-time Mean-variance Criteria}
+Same to the former performance criteria, we first show the discrete-time mean-variance criteria:
+\begin{equation}
+    E(x)=\sum_{k=1}^{N}x_k g(v_k) \tau + \sum_{k=1}^{N}v_k h(v_k) \tau
+\end{equation}
+
+\begin{equation}
+    V(x)=\sum_{k=1}^{N}\sigma^2 x_k^2 \tau + \sum_{k=1}^{N}v_k^2 f(v_k)^2 \tau
+\end{equation}
+Taking the limit $\tau \rightarrow 0$, the trading strategy is a continuous path $x(t)$, and the execution speed $v(t)=-\dot{x}(t)$, because we are a pure selling process. Then the above equations have following continuous-time version:
+\begin{equation}
+    E(x)=\int_{0}^{T}(x(t)g(v(t))+v(t)h(v(t)))dt
+\end{equation}
+
+\begin{equation}
+    V(x)=\int_{0}^{T}(\sigma^2x(t)^2+v(t)^2f(v(t))^2)dt
+\end{equation}
+
+and our target function is:
+\begin{equation}
+    \min\limits_x U(x)=E(x)+\lambda V(x)
+\end{equation}
+which is minimizing:
+\begin{equation}
+    \min_{x(t)}\int_{0}^{T}F(x(t),v(t))\,dt
+\end{equation}
+where$F(x(t),v(t))=xg(v)+vh(v)+\lambda\sigma^2x^2+\lambda v^2f(v)^2$.
+
+\subsubsection{Solutions}
+
+In this calculus of variations, we can use Euler-Lagrange equation to get the stationary point:
+\begin{gather*}
+    \frac{d}{dt}\frac{\partial}{\partial \dot{x}}F(x,v)=\frac{\partial}{\partial x}F(x,v) \\
+    -\frac{d}{dt}F_v(x,v)=F_x(x,v)   \\
+    0=F_x(x,-\dot{x})+\frac{d}{dt}F_v(x,-\dot{x})   \\
+    0=F_x(x,-\dot{x})+\dot{x}F_{vx}(x,-\dot{x})-\ddot{x}F_{vv}(x,-\dot{x}) \\
+\end{gather*}
+
+To solve this second-order ordinary differential equation, we need to give boundary values $x(0)$ and $x(T)$. Since $F$ does not explicitly depend on $t$, we can multiply by $\dot{x}$ and integrate for both sides, and get:
+\begin{equation}
+    F(x,-\dot{x})+\dot{x}F_{v}(x,-\dot{x})=constant
+\end{equation}
+We may obtain:
+\begin{equation}\label{eq:EL-P}
+    P(v)-P(v_0)=x(g(v)-vg'(v))+\lambda \sigma^2x^2
+\end{equation}
+where:
+\begin{equation*}
+    P(v)=v^2h'(v)+\lambda v^2(f(v)^2+2vf(v)f'(v))=v^2\frac{d}{dv}(h(v)+\lambda v f(v)^2)
+\end{equation*}
+
+The constant term is obtained when $v_0=-\dot{x}|_{x=0}$, for a pure selling model, we have $v_0>\geq 0$, also we assume $P(v)$ is an increasing function of $v$ and hence invertible to simplify the problem and get explicit solutions. Since $P(v)$ is increasing as our assumption, so as $P^{-1}(v)$. Thus, as $v_0\rightarrow 0$, our final execution time $T$ increase, then we can get our longest possible execution time by setting $v_0=0$, $P(0)=0$.
+Now at this stage, we can plug in our price dynamic models for solutions. 
+
+The permanent impact is a linear function given:$g(v)=\gamma X$ which means $g(v)$ is independent of $x(t)$, so in Eq.~\ref{eq:EL-P}, the first term in RHS vanished, and Eq.~\ref{eq:EL-P} becomes:
+\begin{equation}
+    \int_{x(t)}^{X}\frac{dx}{P^{-1}(\lambda \sigma^2x^2+P(v_0))}=t
+\end{equation}
+Since we setting $v_0=0$, we may get the quadrature problem:
+\begin{equation}\label{eq:quadtature-p}
+    \int_{x(t)}^{X}\frac{dx}{P^{-1}(\lambda \sigma^2x^2)}=t
+\end{equation}
+
+The temporary impact function and uncertainty function  are $h(v)=\eta v^k,\, f(v)=0$, we can get $P(v)=k\eta v^{k+1}$. Eq.~\ref{eq:quadtature-p} gets:
+\begin{equation}
+    \int_{x(t)}^{X}(\frac{\lambda \sigma^2x^2}{k\eta})^{-\frac{1}{k+1}} dx=t
+\end{equation}
+
+Finally, our solution is:
+\begin{equation}
+    x(t)=\left\{
+    \begin{aligned}
+    X(1+\frac{1-k}{1+k}\frac{t}{T_*})^{-\frac{1+k}{1-k}} & & 0<k<1 \\
+    X exp(-\frac{t}{T_*}) & & k=1 \\
+    X(1-\frac{k-1}{k+1}\frac{t}{T_*})^{\frac{k+1}{k-1}} & & k>1
+    \end{aligned}
+    \right.
+\end{equation}
+$T_*$ is called 'characteristic time', and is defined as:
+\begin{equation}
+    T_*=(\frac{k\eta X^{k-1}}{\lambda \sigma^2})^{\frac{1}{k+1}}
+\end{equation}
+
+\subsection{Incorporating Order-flow into Execution Model}
+\subsubsection{The Cartea-Jaimungal Model}
+In the Cartea-Jaimungal model\cite{cartea2016incorporating}, it is assumed that the speed of investor's liquidation, by $v=\left\{ v_t \right\}_{0\leq t\leq T}$, and we denote the inventory by $X^v=\left\{ X^v_t \right\}_{0\leq t\leq T}$, which satisfies the equation:
+\begin{equation}
+    d X^v_t =- v_t dt,
+\end{equation}
+
+The impact of investor’s speed of trading on prices could be divided into two parts: the permanent part and the temporary part. The permanent part influences the midprice, while the temporary part just impacts the immediate prices after the investor sells the shares.
+
+Besides, we denote the speed sending buy and sell Market orders (MOs) of the rest traders: $\mu^+=\left\{ \mu_t^+ \right\}_{0\leq t\leq T}$ , $\mu^-=\left\{ \mu_t^- \right\}_{0\leq t\leq T}$ respectively. And the midprice
+process $S^v=\left\{ S^v_t \right\}_{0\leq t\leq T}$, satisfies the stochastic differential equation (SDE)
+\begin{equation}
+    d S^v_t =(g( \mu_t^+)-g( \mu_t^- +v_t)) dt + \sigma d W_t ,S^v_0=S,
+\end{equation}
+where $g(\cdot)$ is a function denoting the permanent impact of order-flow,
+$W=\left\{ W_t \right\}_{0\leq t\leq T}$ is a standard Brownian motion, and $\mu^+,\mu^-$ are independent of $W=\left\{ W_t \right\}_{0\leq t\leq T}$.
+
+As for the temporary impact, the average price per share obtained will be lower than the current bid price,
+\begin{equation}
+    \tilde S^v_t =S^v_t-\frac{1}{2}\delta-f(v_t),
+\end{equation}
+where $\delta\geq 0$  is the bid-ask spread which is
+assumed to be a constant, and $f(\cdot)$is a function denoting the temporary impact of the investor’s trading action.
+
+Finally, we get  the investor’s cash process,$C^v_t$
+satisfies the SDE
+\begin{equation}
+    d C^v_t =\tilde S^v_t v_t dt, C^v_0=x.
+\end{equation}
+
+\subsubsection{Performance Criterion and Value Function}
+ The performance criteria is
+\begin{equation}
+    H^v (t,c,S,\bm{\mu},x)=\mathbb{E}_{t,c,S,\bm{\mu},x}\left[ C_T+X^v_T(S^v_T-\frac{1}{2}\delta-\alpha X^v_T)-\phi\int_{t}^{T}(X^v_u )^2 du \right],
+\end{equation}
+where $ \bm{\mu}=\left\{{\mu^+,\mu^-} \right\}$, $C_t=c$, $S_{t-}=S$, and $X_t=x$ in the expectation operator. And the value function is
+\begin{equation}
+    H (t,c,S,\bm{\mu},x)=sup\limits_{v\in \mathcal{A}}H^v (t,c,S,\bm{\mu},x),
+\end{equation}
+where $\mathcal{A}$, the set of admissible strategies, consists of $\mathcal{F}$-predictable processes where $\int^T_t |v_u| du<+\infty, \mathbb{P}-$a.s.
+
+In  the expectation operator, $C_T$ means the investor’s terminal cash from liquidating the shares throughout the trading horizon, $X^v_T(S^v_T-\frac{1}{2}\delta-\alpha X^v_T)$ means that at the end of the strategy, the proceeds the investor would receive while liquidating the remaining inventory $X^v_T$, and $\phi\int_{t}^{T}(X^v_u)^2 du$ is the running penalty , with the running penalty parameter $\phi \geq 0$.
+
+
+Now,we simplify the problem by assuming that $g(x) = bx,f (x) = kx $, with non-negative constants $b, k$. To simplify the problem, we define the
+net order-flow $\mu_t=\mu_t^+ - \mu_t^-$, excluding the investor’s trading rate, and we obtain the new
+midprice process
+\begin{equation}
+    d S^v_t =b(\mu_t-v_t) dt + \sigma d W_t.
+\end{equation}
+
+And the $H (t,c,S,\bm{\mu},x)$ satisfies the dynamic programming equation (DPE):
+
+\begin{equation}\label{DPE}
+   (\partial_t+\frac{1}{2}\sigma^2\partial_{SS})H+\mathcal{L}^{\bm{\mu}}H-\phi x^2+sup_{v}\left\{\left(v(S-\frac{1}{2}\delta-kv)\partial_c +b(\mu-v)\partial_S-v\partial_x\right)H \right\} =0,
+\end{equation}
+for $x>0$, subject to the following condition
+\begin{equation}
+   H (T,c,S,\bm{\mu},x)=c+x(S-\frac{1}{2}\delta)-\alpha x^2,
+\end{equation}
+
+
+and $\mathcal{L}^{\bm{\mu}}$ is the generator of the process $\bm{\mu}$.
+
+\subsubsection{The DPE Solution}
+ And the solution to the DPE(\ref{DPE})
+\begin{equation}
+    H^v (t,c,S,\bm{\mu},x)=c+x(S-\frac{1}{2}\delta)+h_0(t,\bm{\mu})+x h_1(t,\bm{\mu})+x^2h_2(t),
+\end{equation}
+
+\begin{subequations}
+\begin{align}
+h_2(t)&=\sqrt{k\phi}\frac{1+\zeta e^{2\gamma(T-t)}}{1-\zeta e^{2\gamma(T-t)}}-\frac{1}{2}b, \label{Za}\\
+h_1(t,\bm{\mu})&=b\int_{t}^{T}\left(\frac{\zeta e^{\gamma (T-u)}-e^{-\gamma (T-u)}}{\zeta e^{\gamma (T-t)}-e^{-\gamma (T-t)}}\right)\mathbb{E}_{t,\bm{\mu}}[\mu_{u}]du,\label{Zb} \\
+h_0(t,\bm{\mu})&=\frac{1}{4k}\int_{t}^{T}\mathbb{E}_{t,\bm{\mu}}[h_1^2(t,\bm{\mu}_u)]du,\label{Zc}\\
+with\ the\ constants\notag\\
+\gamma&=\sqrt{\frac{\phi}{k}}, \quad and \quad \zeta=\frac{\alpha-\frac{1}{2}b+\sqrt{\phi k}}{\alpha-\frac{1}{2}b-\sqrt{\phi k}}\label{gammazeta}.
+\end{align}
+\end{subequations}
+
+The term $c+x(S-\frac{1}{2}\delta)$ is the book-value of the investor’s remaining inventory. The function  $h_0(t,\bm{\mu})+x h_1(t,\bm{\mu})+x^2h_2(t)$ is independent of the midprice and represents the excess value of the optimal trading.
+
+Suppose $\mathcal{F}_t^{\bm{\mu}}$ denotes the natural filtration generated by the $\bm{\mu}$. And the optimal trading speed is $v_t^*=-\frac{1}{2k}(bx+\partial_{x}h)$, with $h(t,\bm{\mu},x)=h_0(t,\bm{\mu})+x h_1(t,\bm{\mu})+x^2h_2(t)$,
+\begin{equation}\label{the DPE solution}
+   v_t^*=\gamma\frac{1+\zeta e^{2\gamma(T-t)}}{1-\zeta e^{2\gamma(T-t)}}Q_t^{v^*}-\frac{b}{2k}\int_{t}^{T}\left(\frac{\zeta e^{\gamma (T-u)}-e^{-\gamma (T-u)}}{\zeta e^{\gamma (T-t)}-e^{-\gamma (T-t)}}\right)\mathbb{E}[\mu_{u}|\mathcal{F}_t^{\bm{\mu}}]du.
+\end{equation}
+\subsubsection{Comparison with the Almgren–Chriss Model}
+ Compared with the Cartea-Jaimungal model,  we think the Almgren–Chriss strategy  in continuous-time is the optimal strategy, overlooking the impact of order-flow on the midprice dynamics. However, the agent’s own trading rate does affect the midprice in a permanent way, denoted by
+\begin{equation}
+    d S^v_t =-b v_t dt + \sigma d W_t ,
+\end{equation}
+and the execution price receives a linear impact, so that $\tilde S^v_t =S^v_t-kv_t$. In this case the optimal liquidation speed is
+\begin{equation}
+   v_t^{AC}=\gamma\frac{1+\zeta e^{2\gamma(T-t)}}{1-\zeta e^{2\gamma(T-t)}}X_t^{v^*},
+\end{equation}
+with the same constants $\gamma$ and $\zeta$ in (\ref{gammazeta}).
+which is the first term of the optimal speed of trading in the Cartea-Jaimungal model(\ref{the DPE solution}), while
+the second term of the DPE solution adjusts the speed according to the weighted average of the expected net order-flow in the future. The strategy in the Cartea-Jaimungal model(\ref{the DPE solution}) places more emphasis on the  expected net order-flow if it is near the current time $t$.The impact of order-flow would become less significant if maturity approaches $(t\rightarrow T)$, and the investor just needs to use the Almgren–Chriss strategy.
+
+\subsection{Stochastic Volatility and Liquidity}
+We then model the problem of liquidating some fixed shares of a certain financial asset in a discrete-time way \cite{cheridito2014optimal} optimally with stochastic volatility and liquidity. Our goal is to find strategies that minimize the expectation and an expected exponential of the implementation cost. We just take the stochastic volatility and the temporary price impact into account. To make the model practical, we would make the Markov assumptions in the following part. 
+
+\subsubsection{Discrete-time Model}
+We consider the problem of liquidating an asset position of $X \in \mathbb{R}_{+}$ shares until a given time $T \in \mathbb{R}_{+}$. We divide the interval $[0, T]$ into $N$ subintervals of length $\Delta t$ and decide at every time $t_{n-1}=(n-1)\Delta t$ how many shares $y_n$ to sell in the interval $(t_{n-1},t_{n}]$. We assume the execution price
+\begin{equation}\label{tilde}
+    \tilde S_n =S_{n-1}-\eta_{n}y_n,
+\end{equation}
+where $S_n$ follows the dynamics
+\begin{equation}\label{S_n}
+    S_n=S_{n-1}+\sigma_n \xi_n - \gamma y_n,
+\end{equation}
+
+We think of $S_n$ as a fixed convex combination of the bid and ask price: $S_n=\lambda S_n^b+ (1-\lambda) S_n^a$.
+For $\lambda = 1/2$, $S_n$ is the mid-price. But depending on the particular asset to be traded, it could be closer to the bid or ask. $\xi_n$ is a sequence of random variables independent normally distributed with mean $0$ and variance $\Delta t$. $\sigma_n$ is a stochastic volatility. $\gamma \in \mathbb{R}_{+}$ is a constant describing a permanent price impact and $\left\{ {\eta_{n}} \right\}$ a stochastic liquidity process modelling temporary price impact.
+
+We suppose that $S_n,$，
+$\sigma_n$，and $\eta_{n}$ are attainable and denote the filtration they generate by $ \left\{ {\mathcal{F}_n} \right\}$. The proceeds from selling the asset shares are $\sum_{n=1}^N y_n \tilde S_n$. We describe a liquidation strategy in terms of remaining shares $x_n=X-\sum_{i=1}^n y_i$ and call it admissible if the following conditions are satisfied:
+\begin{equation}\label{\tilde S_n}
+    x_0=X,x_n\leq x_{n-1},X_N=0, 
+\end{equation}
+Thus, $ \left\{ x_n \right\}$ is predictable with respect to $  \left\{ {\mathcal{F}_n} \right\}$. An admissible strategy is completely specified by $ \left\{ x_n \right\}$ for
+$1\leq n\leq N-1$. We denote the set of all admissible strategies by $ {\mathcal{A}}$.
+And we define implementation cost as the difference value between the initial value and the proceeds: $C(x):= XS_0 - \sum_{n=1}^N y_n \tilde S_n$. Since $x_N = 0$, it can be written as
+\begin{equation}\notag
+    C(x) = \frac{\gamma X^2}{2}+\sum_{n=1}^N [(x_{n-1}-x_n)^2(\eta_{n}-\frac{\gamma}{2})-\sigma_n \xi_n x_n].
+\end{equation}
+
+Now, to minimize the expectation criterion of $C(x)$. We can just ignore the constant $\frac{cX^2}{2}$ from $C(x)$ and get the same optimal solution for the quadratic form
+\begin{equation}
+    Q(x) = \sum_{n=1}^N [(x_{n-1}-x_n)^2\tilde\eta_{n}-\sigma_n \xi_n x_n],\tilde\eta_{n}=\eta_{n}-\frac{\gamma}{2}>0.
+\end{equation}
+
+To minimize the expectation of $Q(x)$, the dynamics of $(S_n, \sigma_n, \tilde\eta_{n})$ can be more general. Also, we assume that $\xi_n$ is independent of $\sigma(\mathcal{F}_{n-1}, \sigma_n, \tilde\eta_{n})$, which is equal to $\sigma(\mathcal{F}_{n-1}, \sigma_n, \eta_{n})$, with $(\sigma_n, \tilde\eta_{n})$  taking values in a finite subset $V \subseteq \mathbb{R}_{+}^2$. Besides, conditioned on $\mathcal{F}_{n-1}$, the distribution of $(\sigma_n, \tilde\eta_{n})$ just depends on $(\sigma_{n-1}, \tilde\eta_{n-1}, \varphi_{n-1})$, while $\varphi_{n-1}$ is defined as $\varphi_{n-1}:=\varphi_{n-1}(\sigma_{n-1}, \xi_{n-1})$ for a positive integer $K$ and a measurable function $\varphi : \mathbb{R} \rightarrow 	\left\{ 1, \dots, K \right\}$.  It follows that
+$(\sigma_{n}, \tilde\eta_{n}, \varphi_{n})$ is a Markov chain with finite state space $V^K := V \times \left\{ 1, \dots, K \right\}$ and time-dependent transition probabilities are given by 
+\begin{equation}\notag
+   p^{st}_{n-1}=\mathbb{P} 	\left[ (\sigma_{n}, \tilde\eta_{n}, \varphi_{n})=t | (\sigma_{n-1}, \tilde\eta_{n-1}, \varphi_{n-1})=s \right], s,t \in V^K.
+\end{equation}
+ Moreover, if we assume that $(\sigma_{n}, \tilde\eta_{n})$  is a Markov chain with state space $V$ which is independent of the sequence of innovations $\left\{ \xi_n \right\}$. Its transition probabilities are
+given by
+\begin{equation}\notag
+   p^{st}_{n-1}=\mathbb{P} 	\left[ (\sigma_{n}, \tilde\eta_{n})=t| (\sigma_{n-1}, \tilde\eta_{n-1})=s\right], s,t \in V.
+\end{equation}
+
+\subsubsection{Risk-neutral Objective}
+\begin{equation}\notag
+   p^{st}_{n-1}=\mathbb{P} 	\left[ (\sigma_{n}, \tilde\eta_{n}, \varphi_{n})=t | (\sigma_{n-1}, \tilde\eta_{n-1}, \varphi_{n-1})=s \right], s,t \in V^K.
+\end{equation}
+The model is 
+\begin{equation}
+   \mathop{\min}_{x \in \mathcal{A}} \mathbb{E}^s_0 \left[ Q(x) \right]=X^2 a^s_0,
+\end{equation}
+and the unique optimal liquidation strategy conditioned on $x_{n-1}^* $ and $(\sigma_{n-1}, \tilde\eta_{n-1}, \varphi_{n-1})=s$ is given by
+\begin{equation}
+   x_n^*=x_{n-1}^* \frac{\mathbb{E}^s_{n-1}\left[ \tilde\eta_{n} \right]}{\mathbb{E}^s_{n-1}\left[ \tilde\eta_{n} \right]+\sum_{t \in V^K}p^{st}_{n-1} a_n^t},n=1,\dots,N-1,
+\end{equation}
+where the coefficients $a_n^s$ satisfy the backwards recursion:
+\begin{equation}
+    a_{N-1}^s = \mathbb{E}^s_{N-1}\left[ \tilde\eta_{N} \right],
+    a_{n-1}^s = \frac{\mathbb{E}^s_{n-1}\left[ \tilde\eta_{n} \right] \sum_{t \in V^K}p^{st}_{n-1} a_n^t}{\mathbb{E}^s_{n-1}\left[ \tilde\eta_{n} \right]+\sum_{t \in V^K}p^{st}_{n-1} a_n^t}, n\leq N-1,
+\end{equation}
+if $\tilde\eta_{n}=\eta$,then
+\begin{equation}\notag
+    a_{n}^s = \frac{\eta}{N-n}, 
+    x_n^*=x_{n-1}^* \frac{N-n}{N-n+1}=X \frac{N-n}{N}.
+\end{equation}
+
+\subsubsection{Expected Exponential Cost}
+ It is assumed that $(\sigma_{n}, \tilde\eta_{n})$  is a Markov chain with state space $V$ which is independent of the sequence of innovations $\left\{ \xi_n \right\}$ and transition probabilities  are given by
+\begin{equation}\notag
+   p^{st}_{n-1}=\mathbb{P} 	\left[ (\sigma_{n}, \tilde\eta_{n})=t| (\sigma_{n-1}, \tilde\eta_{n-1})=s\right], s,t \in V.
+\end{equation}
+
+The model for Expected Exponential Cost is
+$\mathbb{E}^s_0 \left[ exp(\alpha Q(x)) \right], $ where $Q(x) = \sum_{n=1}^N [(x_{n-1}-x_n)^2\tilde\eta_{n}-\sigma_n \xi_n x_n]$. And we consider the value function
+\begin{equation}
+   J_n^s(z):=\mathop{\min}_{x \in \mathcal{A}_n (z)} \mathbb{E}^s_n \left[ exp(\alpha Q_n(x)) \right],
+\end{equation}
+where $\mathbb{E}^s_n$ denotes the conditional expectation $\mathbb{E} \left[ . |(\sigma_{n-1}, \tilde\eta_{n-1})=s \right]$, $Q_n (x) = \sum_{i=n+1}^N [(x_{i-1}-x_i)^2\tilde\eta_{i}-\sigma_i \xi_i x_i]$. And the value function $J$ satisfies the Bellman equation
+\begin{equation}\notag
+   J^s_{N-1} (x_{N-1}) =\mathop{\sum}_{t \in V} p^{st}_{N-1} exp(\alpha x_{N-1}^2 (w_2-\frac{\gamma}{2})),
+\end{equation} 
+
+\begin{equation}\notag
+   J^s_{n-1} (x_{n-1})=\mathop{\min}_{0\leq x_n \leq x_{n-1}}\left[ \mathop{\sum}_{t \in V} p^{st}_{n-1} exp(\alpha (x_{n-1}-x_n)^2 (w_2-\frac{\gamma}{2})+\frac{1}{2} x_n^2 \alpha^2 w_1^2 \Delta t) J_t^{n} (x_{n}) \right],
+\end{equation} 
+
+for $n\leq N-1$ and the minimizing $x_n^*$
+n form the unique optimal strategy for the problem. Moreover, if we assume that $\sigma_n=\sigma, \tilde\eta_n=\tilde\eta.$ The minimization of the expected exponential reduces to the
+deterministic problem
+\begin{equation}\notag
+  \mathop{\min}_{0\leq x_n \leq x_{n-1}}\left[ \mathop{\sum}_{n=1}^N (x_{n-1}-x_n)^2 \tilde \eta +\frac{1}{2} x_n^2 \alpha \sigma^2 \Delta t \right],
+\end{equation} 
+which is a convex problem. And
+it can be reduced to the first-order condition
+\begin{equation}\notag
+   x_n \alpha \sigma^2 \Delta t = 2 \tilde \eta (x_{n-1}-2x_n +x_{n+1}), n=1,\dots,N-1.
+\end{equation} 
+ $x_n^*=X\frac{\sinh(\beta (T-n\Delta t))}{\sinh(\beta T)}$, for the unique $\beta \geq 0$ satisfying $\cosh(\beta \Delta t)-1=\frac{\alpha \sigma^2 \Delta t}{4\tilde \eta}$.
+
+\section{Order Book Based Model}
+The following models are based on the direction of modelling order book. We briefly introduce the main ideas of three models.
+
+\subsection{Discrete-time Markov Chain}
+\subsubsection{Basis Setup}
+Rama Cont \cite{Rama2010} there is a market where limit orders can be represented as a price sequence $1,2,...,n$. The upper bound n can be large enough in order to put all possible price into our consideration. We can consider the state of the order book $X(t)$ as a continuous- time process $X(t) = (X_1(t), ..., X_n(t)) \ t\geq0. |X_p(t)|, 1 \leq p \leq n$ is called the number of best limit orders (lowest price for sell and highest price for buy) at price p. 
+
+Define the bid price $p_{B}(t)$ as 
+$$p_{B}(t) \equiv \sup \left\{p=1, \ldots, n, X_{p}(t)<0,\right\} \vee 0$$
+and ask price $p_A(t)$ at time $t$ as
+$$p_{A}(t)=\inf \left\{p=1, \ldots, n, X_{p}(t)>0\right\} \wedge(n+1)$$
+which we define price 0 and n+1 for bid/ask price to make sure that there always have bid/ask orders in the book. Moreover, the mid-price $p_M (t)$ and the bid-ask spread $s(t)$ are:
+$$p_{M}(t) \equiv \frac{p_{B}(t)+p_{A}(t)}{2} \quad \text { and } \quad s(t) \equiv p_{A}(t)-p_{B}(t)$$
+
+
+\subsubsection{Dynamics of the Order Book}
+Then we can define dynamics of the order book. We denote the order book by $x \in \mathbb{Z}^{n} x^{p \pm 1}=x \pm e^{p}$, where $e^{p} \in \mathbb{Z}^{n}$ is a zero vector with only $p-t h$ value is 1. Assuming all orders are of unit size( take average size in empirical examples), the state transitioning can be formulated by:
+
+\begin{itemize}
+    \item a limit buy order at level $p\leq p_{A}(t) : x \rightarrow x_{p-1}$
+    \item a limit sell order at level $p\geq p_{B}(t): x \rightarrow x_{p+1}$
+    \item a market buy order: $x \rightarrow x_{p_{A}(t)-1}$
+    \item a market sell order : $x \rightarrow x_{p_{B}(t)+1}$
+    \item a cancellation of an oustanding limit buy order at price $p\leq p_{A}(t): x \rightarrow x_{p+1}$
+    \item a cancellation of an oustanding limit sell order at price $p\geq p_{B}(t): x \rightarrow x_{p-1}$
+\end{itemize}
+
+Moreover, they propose a stochastic model using independent Poisson processes. Given the above settings, $X$ is a continuous-time Markov chain with known transition rates. 
+
+
+\subsubsection{Model Estimation}
+Zovko and Farmer \cite{Zovko2002} suggested a power law for the arrival rates $\lambda$\\
+$$\lambda(i) = \displaystyle \frac{k}{i^{\alpha}}$$
+The arrival rate of market orders can be estimated by
+$$\hat \mu = \displaystyle \frac{N_m}{T} \frac{S_m}{S_l}$$
+where $T$ is the length of our sample (in minutes) and $N_m$ is the number of market orders. \\
+\vspace{0.3cm}
+The cancellation rate function is then given by
+$$\displaystyle \hat{\theta}(i)=\frac{N_{c}(i)}{T Q_{i}} \frac{S_{c}}{S_{l}}$$
+
+
+
+
+\subsection{Fluid-diffusion Model}
+\subsubsection{LOB Dynamics}
+Ulrich Horst and Dörte Kreher\cite{Ulrich2019} specified a one-sided LOB model. It is a discrete-time model and the process is $\tilde S^{(n)} = (B^{(n)}, v^{(n)})$. $B^{(n)}$ is the dynamics of the best bid price and $v^{(n)}$ is the dynamics of the bid-side volume process. The grids they set are $\Delta x^{(n)}, \Delta v^{(n)}$ and $\Delta t^{(n)}$. The initial value of best bid price is $B_0^{(n)} = b_n \Delta x^{(n)}$. The initial value of the volume density function is $v_0^{(n)}$. Then the dynamics of the model is as following: 
+
+$$B_{k}^{(n)} =B_{k-1}^{(n)}+\Delta x^{(n)}\left[\mathbb{I}_{B}\left(\phi_{k}^{(n)}\right)-\mathbb{I}_{A}\left(\phi_{k}^{(n)}\right)\right] $$
+$$v_{k}^{(n)} =v_{k-1}^{(n)}+\Delta v^{(n)} M_{k}^{(n)}$$
+here 
+$$
+M_{k}^{(n)}(\cdot):=\mathbb{I}_{C}\left(\phi_{k}^{(n)}\right) \frac{\omega_{k}^{(n)}}{\Delta x^{(n)}} \mathbb{I}_{I^{(n)}}\left(\pi_{k}^{(n)}\right)(\cdot)
+$$
+and $\phi_{k}^{(n)}$ is an indicator function which indicates three events - price increases, price decreases and limit order placements(cancellations). $\omega_{k}^{(n)}$, $\pi_{k}^{(n)}$ are the size and location of a replacement or cancellation respectively. 
+
+
+\subsubsection{Price Process}
+In this part, they discretize price $\Delta p^{(n)} = o(1)$ and define the normalized increments of $B^{(n)}$ by 
+$$\delta Z_{k}^{(n)}:=\frac{\delta \bar{B}_{k}^{(n)}}{r^{(n)}\left(S_{k-1}^{(n)}\right)}, \quad Z_{k}^{(n)}:=\sum_{j=1}^{k} \delta Z_{j}^{(n)} \quad \text { for} k=1, \ldots, T_{n} .$$
+Then,
+$$\begin{aligned}
+B^{(n)}(t) &=B_{0}^{(n)}+\sum_{k=1}^{\left\lfloor t / \Delta t^{(n)}\right\rfloor} \delta B_{k}^{(n)} \\
+&=B_{0}^{(n)}+\sum_{k=1}^{\left\lfloor t / \Delta t^{(n)}\right\rfloor}\left[p^{(n)}\left(S_{k-1}^{(n)}\right) \Delta t^{(n)}+r^{(n)}\left(S_{k-1}^{(n)}\right) \delta Z_{k}^{(n)}\right]
+\end{aligned}$$
+Finally Ulrich Horst\cite{Ulrich2019} obtained the continuous process $Z_{k}^{(n)}, k=1, \ldots, T_{n}$ by linear interpolation which is weakly to convergent to a standard Brownian motion when $n$ goes to infinity.
+$$Z^{(n)}(t):=\sum_{k=0}^{T_{n}} Z_{k}^{(n)} \mathbb{I}_{\left[t_{k}^{(n)}, t_{k+1}^{(n)}\right)}^{(t),} \quad t \in[0, T]$$.
+
+
+\subsubsection{Volume Process}
+Similar to the analysis of price process, the infinite dimensional volume process $V(n)$ converge as $n \rightarrow \infty$. Therefore, we can represent it as a solution to a stochastic differential equations driven by infinite dimensional martingale which is convergent in distribution to a cylindrical Brownian motion as $n \rightarrow \infty$.
+
+
+\subsubsection{Infinite Dimensional SDE}
+The sequence of LOB models is relatively compact in a localized sense and any accumulation point is the solution to a certain infinite dimensional SDE which is designed by a Brownian motion and a cylindrical Brownian motion. Moreover, under certain assumptions, the LOB dynamics will converge to a unique limit.
+
+Since the finite dimensional SDE
+$$\bar{B}^{m}(t)=B_{0}+\int_{0}^{t} p\left(\bar{S}^{m}(u)\right) d u+\int_{0}^{t} r\left(\bar{S}^{m}(u)\right) d Z_{u}$$
+$$\bar{V}_{i}^{m}(t)=\left\langle V_{0}^{m}, f_{i}\right\rangle+\int_{0}^{t} \mu_{i}\left(\bar{S}^{m}(u)\right) d u+\sum_{j \leq i} \int_{0}^{t} d_{i j}\left(\bar{S}^{m}(u)\right) d W_{u}^{j}, $$
+$$ i \in \mathcal{I}_{m}\left(l_{0}\right),$$
+with 
+$\bar{V}^{m}:=\sum_{i \in \mathcal{I}_{m}\left(l_{0}\right)} \bar{V}_{i}^{m} f_{i} \quad$ and $\quad \bar{S}^{m}=\left(\bar{B}^{m}, \bar{V}^{m}\right)$
+has a unique strong solution $\bar{S}^{m}$. \\
+
+Considering the above results, define
+$$\underline{V}^{m}(t):=V_{0}^{m}+\sum f_{i} \int_{0}^{t} \mu_{i}\left(\bar{S}^{m}(u)\right) d u+\sum f_{i} \sum \int_{0}^{t} d_{i j}\left(\bar{S}^{m}(u)\right) d W_{u}^{j}$$
+
+Then $
+S^{m}:=\left(\bar{B}^{m}\left(\cdot \wedge \tau_{m}\right), \underline{V}^{m}\left(\cdot \wedge \tau_{m}\right)\right)$is the unique strong solution of 
+$$
+\hat{S}^{m}(t)=S_{0}^{m}+\int_{0}^{t \wedge \tau_{m, m}} G_{m}\left(\hat{S}^{m}(u)\right) d Y(u), \quad t \in[0, T],
+$$
+$$
+\tau_{m, l}:=\inf \left\{t \geq 0: \hat{B}^{m}(t) \geq l\right\} \wedge T .
+$$
+
+
+\subsection{LSTM Model}
+\subsubsection{Recurrent Neural Network}
+We firstly introduce RNN model which a basic deep learning method. RNN is very useful in analyzing times series data such as stock prices. The difference between vanilla Neural Network and Recurrent Neural Network is that RNN have loops and it allows information sharing and preserving. The output of hidden layer are stored in the memory which can also be used as input again.  
+
+However, if we have a long-term time series data, there is a problem that the gradients tend to vanish or explode after propagating many times. Therefore, Sepp Hochreiter and Jurgen Schmidhuber\cite{Hochreiter1997} proposed LSTM in 1997.
+
+
+
+\subsubsection{Long Short-term Memory Model}
+Now, we considered the LSTM model. In LSTM, there is a special structure called gate unit which is used to decide whether keep or override information in a memory cell. There are three kinds of gates - input gate, output gate and forget gate. These gates usually consist of two parts - a sigmoid neural net layer and a pointwise multiplication operation. The sigmoid output which is between 0 and 1 gives an idea of how component can go through . 
+
+First, we need to determine what to erase from the memory cell. This step is dependent on the ``forget gate'' sigmoid layer. It first takes the value of $h_{t-1}$ and $x_t$ and gives out a number between 0 and 1 for each component in memory cell $C_{t-1}$. If the output is 1, we keep all the information while if the output is 0, we will throw away all of the information.  
+$$f_t = \sigma (W_f\cdot \left[h_{t-1},x_t\right] + b_f)$$
+
+Next, we determine what new information to store in the memory cell. This consists of two parts - an ``input gate'' sigmoid layer and a tanh layer. The ``input gate'' layer tell us what to update and the tanh layer will create a new $\tilde C_t$ which might be include in the memory cell.
+
+$$i_t = \sigma (W_i\cdot \left[h_{t-1},x_t \right] + b_i)$$
+$$\tilde C_t = {\rm tanh} (W_C\left[h_{t-1},x_t \right] + b_C)$$
+
+
+\begin{figure}[h]
+    \centering
+    \begin{minipage}{0.48\linewidth}
+    \centerline{\includegraphics[width=6.0cm]{lstm1.png}}
+    \caption{Step 1}
+    \end{minipage}
+    \hfill
+    \begin{minipage}{.48\linewidth}
+    \centerline{\includegraphics[width=6.0cm]{lstm2.png}}
+    \caption{Step 2}
+    \end{minipage}
+\end{figure}
+
+Then, we can update the old memory cell $C_{t-1}$ by a new one $C_t$ by combining the values we obtained before. We multiply the old cell with $f_t$ and plus $ i_t * \tilde C_t$ to get a $C_t$. 
+
+$$C_t= f_t * C_{t-1} + i_t * \tilde C_t$$
+
+In the end, we produce the output with the ``ouput gate'' sigmoid layer because we will filter the cell state to give the final output. We first use a sigmoid layer to determine what part to reveal. Then the value will go through the tanh. Then we multiply it by the output of the ``ouput gate'' which gives us the final $h_t$.
+
+$$o_t = \sigma (W_o\left[h_{t-1},x_t \right] + b_o)$$
+$$h_t = o_t * {\rm tanh} C_t$$
+
+\begin{figure}[h]
+    \centering
+    \begin{minipage}{0.48\linewidth}
+    \centerline{\includegraphics[width=6.0cm]{lstm3.png}}
+    \caption{Step 1}
+    \end{minipage}
+    \hfill
+    \begin{minipage}{.48\linewidth}
+    \centerline{\includegraphics[width=6.0cm]{lstm4.png}}
+    \caption{Step 2}
+    \end{minipage}
+\end{figure}
+
+
+\section{Simulation}
+We use the linear impact model and nonlinear impact model for simulation and try to find the optimal execution inventory list under the given real stock data. However, we have to admit that some of the estimations may not be fully correct. The data we choose is NASDAQ 2014 INTC stock data, because we want to be consistent with the third model, Catea-Jaimungal model\cite{RN10}.
+
+We estimate the parameters in the following way. We get 2014 daily stock data by \textit{yfinance} yahoo-finance python package in Table.~\ref{table:data}:
+
+\begin{table}[htbp]
+\begin{tabular}{lllllll}
+           & Open      & High      & Low       & Close     & Adj Close & Volume   \\
+Date       &           &           &           &           &           &          \\
+2014-01-02 & 25.780001 & 25.820000 & 25.469999 & 25.790001 & 20.523907 & 31833300 \\
+2014-01-03 & 25.860001 & 25.900000 & 25.600000 & 25.780001 & 20.515947 & 27796700 \\
+2014-01-04 & 25.770000 & 25.790001 & 25.450001 & 25.459999 & 20.261290 & 28682300 \\
+...        & ...       & ...       & ...       & ...       & ...       & ...      \\
+2014-12-26 & 37.520000 & 37.740002 & 37.520000 & 37.549999 & 30.830029 & 14037200 \\
+2014-12-29 & 37.450001 & 37.520000 & 37.169998 & 37.180000 & 30.526237 & 12203300 \\
+2014-12-30 & 37.080002 & 37.189999 & 36.759998 & 36.759998 & 30.181400 & 15214100
+\end{tabular}
+\caption{2014 INTC data}
+\label{table:data}
+\end{table}
+Then we calculate the realized volatility for parameter estimation, and plot the  log return of the stock and the monthly realized volatility in Fig.~\ref{fig:r_v}.
+
+\begin{figure}[htbp]
+    \centering
+    \includegraphics[scale=0.4]{vol.png}
+    \caption{realized volatility}
+    \label{fig:r_v}
+\end{figure}
+
+For the linear impact model, we assume that bid-ask spread is $\frac{1}{8}$, our expected annual return is $10\%$, initial price $S_0=53.41$ and initial inventory $X=4042$. The calculated annual volatility is 0.23 and we can get daily volatility by $\frac{0.23}{\sqrt{240}}$. To obtain the absolute $\sigma$ and $\alpha$, we must scale the price, so $\sigma=\frac{0.23}{\sqrt{240}}*S_0$ and $\alpha=\frac{0.1*S_0}{240}$. 
+
+Suppose we want to liquidate all our inventory in an hour, so we take $T=N=60(mins)$, $\tau=1(min)$. For temporary impact function, we choose $\epsilon=\frac{1}{16}$, which is one-half of the bid-ask spread and $\eta=2.5\cdot 10^{-4}$. For permanent impact function, we have $\gamma=2.5\cdot 10^{-7}$.
+
+We plot the efficient frontier for searching the best estimation of risk-aversion parameter $\lambda$.
+\begin{figure}
+    \centering
+    \includegraphics[scale=0.6]{ef.png}
+    \caption{Efficient Frontier}
+    \label{fig:EF}
+\end{figure}
+
+Each point in Fig.~\ref{fig:EF} represents a trading strategy under a specific $\lambda$. The tangent line can indicate the optimal solution for $\lambda$ and we estimate $\lambda=5\cdot 10^{-6}$. Then we plot the optimal solution in Fig.~\ref{fig:LIM}:
+
+\begin{figure}
+    \centering
+    \includegraphics[scale=0.6]{lin.png}
+    \caption{Linear Impact Model}
+    \label{fig:LIM}
+\end{figure}
+
+The red dots represent the inventory at each time. We can see the inventory decreases fast at first up to five minutes, and gradually slow until 30 minutes approximately. The linear model has a significant long tail after 30 minutes, which shows that the decreasing speed of the inventory is very slow.
+
+For the nonlinear imapct model, our initial inventory is $X=4042$, and $\sigma=\frac{0.23}{\sqrt{240}}$. As the same in previous strategy, we want to liquidate all our inventory in one hour, so we choose $k=\frac{1}{2}$, the square root of trading speed. For parameter $\lambda$, it is quite difficult to choose for real situations, so we decide to let $\lambda=1$ for simplification. For temporary impact function, $\eta=0.1$, which gives a heavy influence for temporary impact. Then from the optimal solution, we plot the optimal inventory in Fig.~\ref{fig:NIM}.
+
+\begin{figure}
+    \centering
+    \includegraphics[scale=0.6]{nonl.png}
+    \caption{Nonlinear Impact Model}
+    \label{fig:NIM}
+\end{figure}
+
+We can see the liquidate speed increases at first and gradually slows down similarly. However, compared to Fig.~\ref{fig:LIM}, the difference is, for the nonlinear impact model, it does not have a long tail at the last trading time. 
+
+\section{Conclusion}
+
+In this paper, we introduce the optimal execution problem, and classify the methods into two main streams with several models: price impact based models and order book based models. Price impact models focus on modelling temporary and permanent impact from the dynamics of market price and microstructure of the market. Order book based models capture the dynamics of the limit order book system.
+
+Linear impact model is a simple and straightforward method and gives explicit solution for the problem under the assumption that both temporary and permanent impact functions are linear functions. Both of the functions use mean-variance criterion for optimization. Alternatively, nonlinear impact model provides a power law temporary impact function, which gives more weight on the trading speed. Besides, it defines a 'characteristic time', which depends on the initial portfolio size. As the consequence, from the simulation, we can see the nonlinear model is more suitable for rapid execution because it does not have long tails compared with linear model. 
+
+The Cartea-Jaimungal strategy contains an Almgren–Chriss execution strategy adjusted by a
+weighted-average of the expected net order-flow and proportional to the ratio of permanent to temporary linear impacts. Stochastic volatility is a discrete-time model following a coupled and finite Markov chain. We also derive Bellman equations and forward-backward equations to solve the risk-neutral problem and the expected exponential problem.
+
+For three order book based models, the parameters for Markov chain model are easy to estimate. When applying diffusion model, we usually need use a software such as Matlab to solve the stochastic differential equations. And LSTM is suitable for handling and predicting important events with relatively long interstitions and delays in time series.
+
+\section{Technical Stuff}
+
+\subsection{Formulae}
+
+For example look at this
+\begin{equation}\label{eqn:aProblem}
+\min{}\sum_{s\in\mathcal{S}}Pr_{s}\left[\sum_{t=1}^{T}\left(
+\sum_{g\in\mathcal{G}}\left(\alpha_{gts}C_{g}^{0}+
+p_{gts}C_{g}^{1}+\left(p_{gts}\right)^{2}C_{g}^{2}\right)
++\sum_{g\in\mathcal{C}}\gamma_{gts}C_{g}^{s}\right)\right],
+\end{equation}
+and you will see that it has a little number on the side so that I can refer to it as equation (\ref{eqn:aProblem}). Now if I do this
+\begin{eqnarray}
+\sum_{i=1}^{n}k_{i}&=&20\label{eqn:one}\\
+\sum_{j=20}^{m}\delta_{i}&\geq{}&\eta{}\notag
+\end{eqnarray}
+I can align two formulae and control which one has a number on the side. It is (\ref{eqn:one}). I can also do something like this
+\begin{displaymath}
+Y_{l}=\left[\begin{array}{cc}
+             \left(y_{s}+i\frac{b_{c}}{2}\right)\frac{1}{\tau{}^{2}} &
+             -y_{s}\frac{1}{\tau{}e^{-i\theta^{s}}}\\
+             -y_{s}\frac{1}{\tau{}e^{i\theta^{s}}} &
+             y_{s}+i\frac{b_{c}}{2}
+             \end{array}\right],
+\end{displaymath}
+and it won't have a number on the side. Now if I have to do some huge mathematics I'd better structure it a little and include linebreaks etc. so that it fits on one page.
+\begin{eqnarray}\label{eqn:horrible}
+p_{l}^{f}&=&G_{l11}\left(2v_{F(l)}\bar{v}_{F(l)}-\bar{v}_{F(l)}^{2}\right)\\
+&+&
+\bar{v}_{F(l)}\bar{v}_{T(l)}
+\left[
+B_{l12}\sin{}(\bar{\delta{}}_{F(l)}-\bar{\delta{}}_{T(l)})
++G_{l12}\cos{}(\bar{\delta{}}_{F(l)}-\bar{\delta{}}_{T(l)})
+\right]\notag\\
+&+&
+\left[\begin{array}{r}
+      \bar{v}_{T(l)}
+      \left[
+      B_{l12}\sin{}(\bar{\delta{}}_{F(l)}-\bar{\delta{}}_{T(l)})
+      +G_{l12}\cos{}(\bar{\delta{}}_{F(l)}-\bar{\delta{}}_{T(l)})
+      \right]\\
+      \bar{v}_{F(l)}
+      \left[
+      B_{l12}\sin{}(\bar{\delta{}}_{F(l)}-\bar{\delta{}}_{T(l)})
+      +G_{l12}\cos{}(\bar{\delta{}}_{F(l)}-\bar{\delta{}}_{T(l)})
+      \right]\\
+      \bar{v}_{F(l)}\bar{v}_{T(l)}
+      \left[
+      B_{l12}\cos{}(\bar{\delta{}}_{F(l)}-\bar{\delta{}}_{T(l)})
+      -G_{l12}\sin{}(\bar{\delta{}}_{F(l)}-\bar{\delta{}}_{T(l)})
+      \right]\\
+      \bar{v}_{F(l)}\bar{v}_{T(l)}
+      \left[
+      -B_{l12}\cos{}(\bar{\delta{}}_{F(l)}-\bar{\delta{}}_{T(l)})
+      +G_{l12}\sin{}(\bar{\delta{}}_{F(l)}-\bar{\delta{}}_{T(l)})
+      \right]\\
+      \end{array}\right]
+\cdot{}
+\left[\begin{array}{c}
+      v_{F(l)}-\bar{v}_{F(l)}\\
+      v_{T(l)}-\bar{v}_{T(l)}\\
+      \delta_{F(l)}-\bar{\delta{}}_{F(l)}\\
+      \delta_{T(l)}-\bar{\delta{}}_{T(l)}
+      \end{array}\right],\notag
+\end{eqnarray}
+This is a lot of fun!
+\clearpage
+
+\subsection{Important Things}
+Finally we should have a nice picture like this one. However, I won't forget that figures and table are environments which float around in my document. So LaTeX will place them wherever it thinks they fit well with the surrounding text. I can try to change that with a float specifier, e.g. [!ht].
+%This is a comment. The Compiler ignores it. It is here to remind me that, if I use a .jpeg or .png picture file as below I will need to compile the document with the pdflatex compiler.
+\begin{figure}[!ht]
+\centering
+\includegraphics[width=0.5\textwidth]{scenTree.png}
+\caption{Look at this scenario tree with funny times $t_{1}$ and scenarios $s_{1}$ etc.}
+\label{fig:scenarioTree}
+\end{figure}
+Now I want to use one of my own environments. I want to define something.
+\begin{Definition}
+ I define
+$$
+\Gamma_{\eta}:=\sum_{i=1}^{n}\sum_{j=i}^{n}\xi{}(i,j)
+$$
+\end{Definition}
+I definitely need some good tables, so I do this.
+\begin{table}[!ht]
+\centering
+\begin{tabular}{|ll|rrrr|}
+\hline
+Case&Generators&Therm. Units&Lines&Peak load: [MW]&[MVar]\\
+\hline\hline
+6 bus&3 at 3 buses&2&11&210&210\\
+9 bus&3 at 3 buses&3&9&315&115\\
+24 bus&33 at 11 buses&26&38&2850&580\\
+30 bus&6 at 6 buses&5&41&189.2&107.2\\
+39 bus&10 at 10 buses&7&46&6254.2&1387.1\\
+57 bus&7 at 7 buses&7&80&1250.8&336.4\\
+\hline
+\end{tabular}
+\caption{Something that doesn't make sense.}
+\label{tab:things}
+\end{table}
+I should really refer to Table \ref{tab:things}.
+\clearpage
+
+
+\section{Appendix}
+\begin{lstlisting}
+# import packages
+import numpy as np
+import yfinance as yf
+import pandas as pd
+import matplotlib.pyplot as plt
+
+def realized_vol(x):
+    return(np.sqrt(np.sum(x**2)))
+
+data = yf.download('INTC',start='2014-01-01',end='2014-12-31')
+data['Log return'] = np.log(data['Adj Close'] / data['Adj Close'].shift(1))
+
+data = data.loc[:,['Log return']]
+data = yf.download('INTC',start='2014-01-01',end='2014-12-31')
+data_rv = data.groupby(pd.Grouper(freq = 'M')).apply(realized_vol)
+data_rv.rename(columns={'Log return':'realized vol'},inplace=True)
+
+plt.figure(figsize=(16,4))
+plt.subplot(1,2,1)
+plt.plot(data)
+plt.title('Log Return in 2013')
+plt.subplot(1,2,2)
+plt.plot(data_rv)
+plt.title('Realized Volatility')
+
+# Nonlinear model simulation for INTEL stock 2014
+k = 1 / 2
+sigma = 0.23 / np.sqrt(240) # change to daily volatility
+X = 4042  # our initial inventroy
+lmda = 1
+eta = 1e-1
+tau = 1 # an hour
+T_star = ((k * eta * (X**(k-1))) / (lmda * sigma ** 2)) ** (1 / (k+1))
+
+def nonlinear_x1(t,k): # 0<k<1
+    T_star = ((k * eta * (X**(k-1))) / (lmda * sigma ** 2)) ** (1 / (k+1))
+    return((1 + (1-k) / (1+k) * t / T_star)**(-(1+k) / (1-k)))
+
+def nonlinear_x2(t,k): # k=1
+    T_star = ((k * eta * (X**(k-1))) / (lmda * sigma ** 2)) ** (1 / (k+1))
+    return(np.exp(-t / T_star))
+
+def nonlinear_x3(t,k): # k>1
+    T_star = ((k * eta * (X**(k-1))) / (lmda * sigma ** 2)) ** (1 / (k+1))
+    return((1 - (k-1) / (k+1) * t / T_star)**((k+1) / (k-1)))
+
+t1 = np.linspace(0,60,100) * 0.10838061547025504 # T_star at k = 1/2
+
+plt.plot(t1,X*nonlinear_x1(t1,1/2),label = 'k=1/2')
+plt.xticks(np.arange(0,7,1),np.arange(0,70,10))
+plt.title('Nonlinear Model')
+plt.xlabel('Time (mins)')
+plt.ylabel('Inventroy')
+plt.legend()
+
+def h(v,k,eta): # nonlinear impact function
+    return(eta*v**k)
+v = np.arange(0,2,0.01)
+
+plt.plot(v,h(v,1/2,1e-1),label='k=1/2',color='red')
+plt.plot(v,h(v,1,1e-1),label='k=1')
+plt.plot(v,h(v,2,1e-1),label='k=2')
+plt.ylabel('h(v)')
+plt.xlabel('trading speed')
+plt.title('k in nonlinear impact function')
+plt.legend()
+
+# linear model for INTEL stock in 2014
+# bid-ask spread 1/8
+# expected return 10%
+
+S_0 = 53.41
+X = 4042
+T = 60
+N = 60
+tau = 1
+sigma = 0.23*S_0 / np.sqrt(240) # absolute volatility = vol* initial price
+alpha = 0.1*S_0/240  # alpha = expected return* initial price/date 
+epsilon = 0.0625 # constant for temporary impact
+gamma = 2.5e-7
+eta = 2.5e-4
+lambda_u = 2e-7
+lamda = lambda_u
+lambda_v = 1.645
+
+def x(t,lambda_u): # solution for 0<k<1
+    kappa = np.sqrt(lambda_u* sigma ** 2 / eta)
+    return(X * np.sinh(kappa * (T - t)) / np.sinh(kappa * T))
+
+def E(x,lambda_u): # expectation of cost
+    kappa = np.sqrt(lambda_u* sigma ** 2 / eta)
+    return(gamma * x**2 / 2 + epsilon*x + (eta-gamma*tau/2)*x**2*(np.tanh(kappa*tau/2)*(tau*np.sinh(2*kappa*T)+2*T*np.sinh(kappa*tau)))/(2*tau**2*np.sinh(kappa*tau)**2))
+
+def V(x,lambda_u): # variance of cost
+    kappa = np.sqrt(lambda_u* sigma ** 2 / eta)
+    return(sigma**2*x**2/2*(tau*np.sinh(kappa*T)*np.cosh(kappa*(T-tau))-T*np.sinh(kappa*tau))/(np.sinh(kappa*T)**2*np.sinh(kappa*tau)))
+
+t = np.arange(0,60,1)
+
+la = np.linspace(9e-7,9e-6,100)
+plt.scatter(V(X,la),E(X,la))
+plt.xlabel('V(x)')
+plt.ylabel('E(x)')
+plt.title('Efficient Frontier')
+
+plt.scatter(t,x(t,5e-6),color = 'red')
+plt.plot(t,x(t,5e-6),'-',color = 'blue',label = 'lambda=2e-6')
+plt.xlabel('Time (mins)')
+plt.ylabel('Inventroy')
+plt.title('Linear Model')
+
+\end{lstlisting}
+
+ \bibliographystyle{plain}  % Or use the `amsrefs' package (http://www.ams.org/tex/amsrefs.html)!
+\bibliography{my_bibtex_file.bib}
+ \addcontentsline{toc}{section}{Bibliography}
+\end{document}
+
+ ---------------
